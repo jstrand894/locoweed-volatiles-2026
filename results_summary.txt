@@ -1,0 +1,322 @@
+============================================================
+RESULTS SUMMARY
+Locoweed VOC Profile Analysis: Endophyte Effect
+Oxytropis sericea — Greenhouse & Field
+Generated: 2026-03-17 (updated)
+============================================================
+
+Overview
+--------
+We tested whether the presence of the endophytic fungus Undifilum oxytropis
+(SWA-positive / E+) is associated with differences in whole-plant volatile
+organic compound (VOC) profiles in Oxytropis sericea. Plants were spatially
+paired (one E+, one E-) to control for microsite and genetic variation.
+Analyses used centered log-ratio (CLR) transformation of raw VOC emission
+rates (ng/g/hr), with Euclidean distance on CLR values (= Aitchison distance)
+as the dissimilarity metric.
+
+METHODOLOGICAL NOTES:
+  1. Year was removed from the PERMANOVA formula in both datasets. Year is
+     fully collinear with the stratification variable (strata = year), making
+     it inestimable as a separate term (Df = 0). Year effects are instead
+     controlled for via the permutation strata. Year-stratified models were
+     run separately to confirm consistency of results across years.
+  2. SIMPER was run on raw ng/g/hr values (Bray-Curtis dissimilarity) rather
+     than CLR-transformed data. CLR values can be negative, which renders
+     Bray-Curtis undefined. An Aitchison-consistent compound ranking was also
+     computed from squared mean CLR differences between groups.
+  3. The following compounds were excluded from the greenhouse analysis as
+     non-biogenic or likely contaminants: tetradecane and variants, cyclohexene,
+     o+C5xe, homosalate, ethylhexylsalicylate, diethylphthalate (synthetic UV
+     filters / plasticizers), benzothiazole (industrial rubber additive),
+     butylatedhydroxytoluene / BHT (synthetic antioxidant; SPME contaminant),
+     dodecylacrylate (synthetic acrylate ester), hexadecane, tridecane,
+     pentadecane, nanodecane (straight-chain alkane contaminants), p-trimethyl
+     (likely trimethylbenzene; anthropogenic aromatic), caprylyl acetate (not
+     established as biogenic in Oxytropis), and dimethylnona (identity
+     ambiguous; excluded for conservative compound selection). Retained
+     compounds are all established biogenic plant volatiles (terpenoids, green
+     leaf volatiles, fatty acid-derived aldehydes, methylsalicylate).
+  4. The field PERMANOVA includes collection.type (flowers vs. leaves) as a
+     term, but this variable is nearly perfectly confounded with pair2: only
+     1 of 49 pair2 groups contains both tissue types. As a result,
+     collection.type is undetectable as a marginal term after accounting for
+     pair2. Tissue-stratified models (flowers only; leaves only) were run
+     as the appropriate test of the endophyte effect within each tissue.
+
+
+============================================================
+SECTION 2: GREENHOUSE ANALYSIS — Spring 2022 & 2023
+============================================================
+
+Sample sizes
+------------
+  Spring 2022: 29 E- plants, 28 E+ plants (n = 57)
+  Spring 2023: 29 E- plants, 29 E+ plants (n = 58)
+  Total: 115 samples, 17 biogenic compounds
+  Compounds retained: a-terpinol, bocimene, bpinene, caryophyllene, decanal,
+    dodecanal, hexenolacetate, hexenylisovalerate, humulene, linalool,
+    manoyl oxide, methylsalicylate, nonanal, octanal, sixmethyl,
+    y-cadinene, z3hex
+
+2D. Betadisper — Homogeneity of Multivariate Dispersion
+---------------------------------------------------------
+  By year: p = 0.046
+    → Within-group spread differed significantly between 2022 and 2023.
+      Year is controlled via permutation strata rather than as a model term.
+
+  By endophyte status (swa): p = 0.801
+    → No significant difference in within-group spread between E+ and E-.
+      The PERMANOVA test for swa is not inflated by dispersion differences.
+
+2E. PERMANOVA — adonis2 (marginal / Type III, strata = year, 999 permutations)
+--------------------------------------------------------------------------------
+  Formula: Aitchison distance ~ swa + pair
+
+  Term          Df    SumOfSqs    R²       F       p
+  ---------------------------------------------------
+  swa            1      12.1    0.003    0.636    0.798
+  pair          59    2763.7    0.726    2.453    0.003 **
+  Residual      54    1031.2    0.271
+  Total        114    3806.2    1.000
+
+  Key findings:
+  - Endophyte status (swa) explained <1% of variance in VOC profiles
+    and was not significant (F = 0.64, R² = 0.003, p = 0.798).
+  - Plant pair identity accounted for 72.6% of variance and was highly
+    significant (p = 0.003), indicating that plant-level and microsite-level
+    factors drive VOC composition far more than endophyte status.
+  - The null result for swa is consistent across all compound filtering
+    decisions made during this analysis.
+
+2E-ii. Year-stratified GH PERMANOVAs (~ swa + pair, 999 permutations)
+  [Confirmatory check — not primary results]
+-----------------------------------------------------------------------
+  Spring 2022:
+    swa:  Df = 1, R² = 0.026, F = 1.613, p = 0.131
+    pair: Df = 29, R² = 0.555, F = 1.170, p = 0.137
+
+  Spring 2023:
+    swa:  Df = 1, R² = 0.015, F = 1.106, p = 0.349
+    pair: Df = 29, R² = 0.623, F = 1.594, p = 0.001 ***
+
+  The swa effect was non-significant in both years individually, consistent
+  with the combined analysis. Pair was significant in 2023 but not 2022.
+
+2F. PCA — Compositional Space Visualization
+---------------------------------------------
+  PC1: 33.4% of variance
+    Top loadings: dodecanal, methylsalicylate, octanal
+
+  PC2: 10.7% of variance
+    Top loadings: nonanal, decanal, hexenolacetate
+
+  All top loading compounds are established biogenic plant volatiles. A strong
+  year separation persists along PC1. Scores overlap broadly between E+ and
+  E- plants within each year, consistent with the non-significant PERMANOVA
+  result for swa.
+
+
+============================================================
+SECTION 3: FIELD ANALYSIS — 2022 & 2023
+============================================================
+
+Sample sizes
+------------
+  2022 E-: 9 flower samples, 14 leaf samples
+  2022 E+: 9 flower samples, 16 leaf samples
+  2023 E-: 8 flower samples,  8 leaf samples
+  2023 E+: 10 flower samples, 10 leaf samples
+  Total: 84 samples, 10 core compounds detected across both years.
+
+3D. Betadisper — Homogeneity of Multivariate Dispersion
+---------------------------------------------------------
+  By year: p = 0.085
+    → Marginal but non-significant difference in dispersion between years.
+
+  By collection type (flowers vs. leaves): p = 0.152
+    → No significant difference in within-group spread by tissue type.
+
+  By endophyte status (swa): p = 0.744
+    → No significant difference in dispersion between E+ and E-.
+      The PERMANOVA swa term is not inflated by dispersion differences.
+
+3E. PERMANOVA — adonis2 (marginal / Type III, strata = year, 999 permutations)
+--------------------------------------------------------------------------------
+  Formula: Aitchison distance ~ swa + collection.type + pair2
+
+  Term                Df    SumOfSqs    R²       F       p
+  ----------------------------------------------------------
+  swa                  1      32.0    0.009    1.534    0.171
+  collection.type      1      14.1    0.004    0.676    0.594
+  pair2               48    2049.6    0.584    2.046    0.001 ***
+  Residual            32     667.8    0.190
+  Total               83    3508.1    1.000
+
+  Key findings:
+  - Endophyte status (swa) explained less than 1% of variance and was not
+    significant (F = 1.53, R² = 0.009, p = 0.171).
+  - Collection type (flowers vs. leaves) was not significant (F = 0.68,
+    R² = 0.004, p = 0.594). This estimate should be interpreted with caution:
+    collection.type and pair2 are nearly perfectly confounded (only 1 of 49
+    pair2 groups contains both tissue types), so pair2 absorbs the tissue
+    effect before collection.type is estimated. See Section 3E-iii.
+  - Plant pair identity accounted for 58.4% of variance and was highly
+    significant (p = 0.001).
+
+3E-ii. Year-stratified Field PERMANOVAs (~ swa + collection.type + pair2)
+  [Confirmatory check — not primary results]
+--------------------------------------------------------------------------
+  2022:
+    swa:             Df = 1, R² = 0.009, F = 0.981, p = 0.408
+    collection.type: Df = 1, R² = 0.007, F = 0.762, p = 0.574
+    pair2:           Df = 29, R² = 0.705, F = 2.624, p = 0.001 ***
+
+  2023:
+    swa:             Df = 1, R² = 0.032, F = 1.927, p = 0.102
+    collection.type: Df = 0 (inestimable — fully collinear with pair2 in 2023;
+                     each pair2 group in 2023 represents a single tissue type)
+    pair2:           Df = 18, R² = 0.445, F = 1.482, p = 0.043 *
+
+  The swa effect remained non-significant in both years.
+
+3E-iii. Tissue-stratified Field PERMANOVAs (~ swa + pair2, strata = year)
+  [Primary test for endophyte effect within each tissue]
+---------------------------------------------------------------------------
+  Flowers only (n = 36, 21 pairs):
+    swa:  Df = 1, R² = 0.017, F = 0.829, p = 0.523
+    pair2: Df = 20, R² = 0.709, F = 1.771, p = 0.055
+
+  Leaves only (n = 48, 30 pairs):
+    swa:  Df = 1, R² = 0.010, F = 0.973, p = 0.472
+    pair2: Df = 29, R² = 0.816, F = 2.676, p = 0.001 ***
+
+  The endophyte effect was non-significant in both flowers and leaves.
+  Pair identity dominates variance in both tissue types (71–82%), leaving
+  limited power to detect a small swa effect.
+
+3F. PCA — Compositional Space Visualization
+---------------------------------------------
+  PC1: 25.9% of variance
+    Top loadings: cisthreehexiso, octanal, heptanal
+
+  PC2: 19.6% of variance
+    Top loadings: decanal, nonanal, methylsalicylate
+
+  Variance is more evenly distributed across PCs in the field than the
+  greenhouse. Scores overlap substantially between E+ and E- plants and
+  across tissue types, consistent with the non-significant swa results.
+
+
+============================================================
+SECTION 4: SIMPER — Compound Contributions to Dissimilarity
+============================================================
+
+4A. SIMPER on raw ng/g/hr values (Bray-Curtis dissimilarity)
+-------------------------------------------------------------
+  Note: SIMPER was run on raw (non-CLR) values because Bray-Curtis requires
+  non-negative inputs. No compounds were individually significant at α = 0.05
+  in either dataset.
+
+  GREENHOUSE — top contributors to E- vs. E+ dissimilarity (cumsum ~67%):
+    Rank  Compound        Avg. dissim.   Mean E-   Mean E+   p
+    1     nonanal         0.109          1.318     1.087     0.615
+    2     decanal         0.073          0.800     0.656     0.597
+    3     z3hex           0.066          0.463     0.400     0.629
+    4     manoyl oxide    0.056          0.219     0.323     0.504
+    5     octanal         0.054          0.538     0.217     0.773
+    6     sixmethyl       0.054          0.307     0.344     0.400
+
+  No compound shows a consistent directional difference between groups,
+  and none were individually significant.
+
+  FIELD — top contributors to E- vs. E+ dissimilarity (cumsum ~82%):
+    Rank  Compound          Avg. dissim.   Mean E-   Mean E+   p
+    1     nonanal           0.175          45.4      44.2      0.644
+    2     z3hex             0.171          34.2      41.3      0.845
+    3     dlimonene         0.131          35.8      38.0      0.837
+    4     octanal           0.074          21.3      18.4      0.708
+    5     bocimene          0.057           6.1       4.7      0.296
+
+  Mean raw emissions of the top compounds were nearly identical between
+  E- and E+ groups, consistent with the overall non-significant pattern.
+
+4B. CLR-based compound ranking (Aitchison analog)
+--------------------------------------------------
+  Ranks each compound by its squared mean CLR difference between E- and E+,
+  expressed as a percentage of the total squared Aitchison centroid distance.
+
+  GREENHOUSE — top compounds by % contribution to group separation:
+    Rank  Compound          % contribution   Mean E-    Mean E+
+    1     caryophyllene     21.3             -0.363     -0.652
+    2     hexenolacetate    12.9             -1.480     -1.250
+    3     bocimene          11.1             -0.353     -0.562
+    4     z3hex             10.4              0.361      0.563
+    5     humulene           8.0             -0.925     -1.100
+
+  The top five compounds account for ~64% of the total (small) group
+  separation. Caryophyllene, hexenolacetate, and bocimene are all higher
+  in E- plants in CLR space; z3hex is higher in E+.
+
+  FIELD — top compounds by % contribution to group separation:
+    Rank  Compound          % contribution   Mean E-    Mean E+
+    1     heptanal          36.1             -1.088     -0.563
+    2     bocimene          31.2             -0.464     -0.953
+    3     z3hex             12.1              0.991      0.686
+    4     octanal           10.2              0.389      0.668
+    5     methylsalicylate   4.8             -0.146     -0.337
+
+  Heptanal and bocimene together account for ~67% of the CLR centroid
+  distance, with heptanal higher in E- and bocimene higher in E+. As with
+  the greenhouse, these percentages describe the composition of a small
+  overall separation.
+
+
+============================================================
+SECTION 5: INDICATOR VALUE ANALYSIS (IndVal)
+============================================================
+
+  No compounds were significantly associated with E+ or E- status in either
+  the greenhouse or field dataset (α = 0.05, 999 permutations).
+
+  Greenhouse: 0 of 17 biogenic compounds selected.
+  Field:      0 of 10 compounds selected.
+
+  This is consistent with the PERMANOVA result — there is no detectable
+  multivariate or individual-compound signal of endophyte status in VOC
+  profiles in either setting.
+
+
+============================================================
+OVERALL SUMMARY
+============================================================
+
+Across both greenhouse and field datasets, endophyte status (E+ vs. E-)
+was not associated with detectable differences in VOC emission profiles.
+Combined PERMANOVA tests were non-significant for swa in both datasets
+(GH: F = 0.64, R² = 0.003, p = 0.798; Field: F = 1.53, R² = 0.009,
+p = 0.171). Year-stratified models confirmed that this null result is
+consistent across both years in both settings. Tissue-stratified field
+models likewise showed no endophyte effect (flowers: F = 0.83, p = 0.523;
+leaves: F = 0.97, p = 0.472). No individual compounds were identified as
+indicators of endophyte presence by IndVal.
+
+Plant pair identity was the dominant source of variance in both analyses
+(GH: R² = 0.726, p = 0.003; Field: R² = 0.584, p = 0.001), indicating that
+plant-level genetic or microsite factors drive VOC composition far more than
+endophyte infection status.
+
+Within-group dispersion did not differ between E+ and E- plants in either
+dataset (GH: p = 0.801; Field: p = 0.744), supporting the validity of the
+PERMANOVA results for the swa term.
+
+Compound-level analyses (SIMPER on raw data; CLR ranking) identify
+caryophyllene as the largest single contributor to GH group separation in
+CLR space (21.3% of squared Aitchison centroid distance, higher in E-),
+followed by hexenolacetate (12.9%), bocimene (11.1%), and z3hex (10.4%).
+In the field, heptanal and bocimene together account for ~67% of the CLR
+centroid distance. In all cases these percentages describe the composition
+of a small overall separation — the between-group effect size is low across
+both datasets and analytical approaches.
+
+============================================================

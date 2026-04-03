@@ -1,0 +1,1272 @@
+---
+title: "Locoweed"
+author: "Jackson Strand"
+date: "`r Sys.Date()`"
+output:
+  pdf_document: default
+  html_document: default
+editor_options:
+  chunk_output_type: console
+---
+
+```{r}
+library(tidyverse)
+library(ggplot2)
+library(vegan)
+# library(pairwiseAdonis)
+library(patchwork)
+library(cowplot)
+library(ggfortify) # for plotting PCA?
+library(ggpattern)
+library(cowplot)
+library(compositions)
+library(ggrepel)
+library(gt)
+library(clipr)  # To copy to clipboard
+library(grid)
+```
+
+
+```{r Greenhouse data proc}
+knitr::knit("proc-docs/GH-data-proc.Rmd", envir = globalenv())
+
+gh.joined.data.clr
+```
+
+```{r Megan-data-proc.md}
+knitr::knit("proc-docs/Megan-data-proc.Rmd", output = "md-files/Megan-data-proc.md", envir = globalenv())
+
+proc_2019
+```
+
+```{r field data proc}
+knitr::knit("proc-docs/Field-data-proc.Rmd", output = "md-files/Field-data-proc.md", envir = globalenv())
+
+field_comb_clr_final 
+```
+
+```{r Greenhouse Table}
+joined.data %>%
+```
+
+
+```{r Greenhouse Plot}
+color1 <- "#402747"
+color2 <- "#BFD8B8"
+
+joined.data$swa <- factor(joined.data$swa, labels = c("Endophyte Absent", "Endophyte Present"))
+
+
+plot_table_data <-
+joined.data %>% 
+  mutate(ngghr = replace_na(ngghr, 0)) %>% 
+  mutate(ngghr = ifelse(ngghr == 0, 0.01, ngghr)) %>% 
+  group_by(swa, compound) %>% 
+  reframe(mean_ngghr = mean(ngghr),
+          sd = sd(ngghr),
+          n = n(),
+          se = sd/sqrt(n)) %>% 
+  na.omit() %>% 
+  filter(!compound %in% c("tetradecane", "tetradec", "tetramethyl",
+                          "standard", "o+C5xe")) 
+
+joined.data %>%
+  dplyr::select(plant.id, year) %>%
+  distinct() %>% 
+  nrow()
+
+full_plot <-
+plot_table_data %>% 
+  filter(compound %in% c("bocimene", "linalool", "sixmethyl", "z3hex")) %>%
+  ggplot() +
+  geom_bar(stat = "identity",
+           aes(x = compound, y = mean_ngghr, fill = swa),
+           position = position_dodge(width = 0.9),
+           color = "black",
+           linewidth = 0.25) + 
+  geom_errorbar(aes(x = compound, 
+                    ymin = mean_ngghr - se,
+                    ymax = mean_ngghr + se,
+                    group = swa),
+                position = position_dodge(width = 0.9),
+                width = 0.5) +
+  labs(x = NULL,
+       y = NULL,
+       # y = "Mean volatile emission (ng/g/hr)",
+       fill = NULL) +
+  scale_y_continuous(expand = c(0.01,0)) +
+  theme(axis.text.x = element_text(angle = 35, hjust = 1),
+        panel.grid = element_blank(),
+        panel.background = element_rect(fill = "white", color = NA),
+        axis.line = element_line(color = "black")) +
+  scale_fill_manual(name = "Endophyte",
+                    values = c("Endophyte Absent" = "white",
+                               "Endophyte Present" = color2),
+                    labels = c("Absent", "Present")) +
+  scale_x_discrete(labels = c(bocimene = expression(beta * "-ocimene"),
+                              z3hex = expression(italic(Z) * "-3-hexenyl acetate"),
+                              caryophyllene = "caryophyllene",
+                              linalool = "linalool",
+                              sixmethyl = "6-methyl-5-hepten-2-one")) +
+  labs(y = expression("Average VOC emission (ng g"^{-1}~"hr"^{-1}*")"),
+       title = "")
+
+full_plot
+
+
+```
+
+# Jackson Greenhouse Collected Locoweed Volatiles
+
+```{r PERMANOVA}
+# ================================================================
+# GREENHOUSE VOC ANALYSIS WORKFLOW — PERMANOVA + PCA
+# ================================================================
+
+
+# ------------------------
+# 1. Prepare data for PERMANOVA
+# ------------------------
+for_permanova_gh <- gh.joined.data.clr %>% 
+  pivot_longer(-c(plant.id, year, swa, pair), 
+               names_to = "compound", values_to = "ngghr") %>%
+  filter(!compound %in% c("tetradecane", "tetradec", "tetramethyl",
+                          "standard", "o+C5xe", "cyclohexene", "homosalate")) %>% 
+  mutate(ngghr = round((ngghr^2) * 100000, 0)) %>%
+  pivot_wider(names_from = "compound", values_from = "ngghr") %>%
+  unite("plant.id", plant.id, year, pair, sep = "~") %>%
+  select(-swa) %>%
+  column_to_rownames("plant.id") %>%
+  na.omit()
+
+# ------------------------
+# 2. Metadata
+# ------------------------
+permanova_meta_gh <- gh.joined.data.clr %>%
+  select(plant.id, year, pair, swa) %>%
+  unite("plant.id", plant.id, year, pair, sep = "~", remove = FALSE) %>%
+  filter(plant.id %in% rownames(for_permanova_gh)) %>%
+  column_to_rownames("plant.id")
+
+# ------------------------
+# 3. CLR transform
+# ------------------------
+clr_matrix_gh <- clr(as.matrix(for_permanova_gh))
+clr_matrix_gh <- clr_matrix_gh[rowSums(clr_matrix_gh) != 0, ]
+permanova_meta_gh <- permanova_meta_gh[rownames(clr_matrix_gh), ]
+
+# ------------------------
+# 4. PERMANOVA
+# ------------------------
+set.seed(1)
+dist_matrix_gh <- vegdist(clr_matrix_gh, method = "euclidean")
+
+permanova_output_gh <- adonis2(
+  clr_matrix_gh ~ swa + year + pair,
+  data = permanova_meta_gh,
+  method = "euclidean",
+  permutations = 999,
+  strata = permanova_meta_gh$year,
+  by = "terms"
+)
+
+# ------------------------
+# 5. Test for dispersion homogeneity
+# ------------------------
+bd_year_gh <- betadisper(dist_matrix_gh, permanova_meta_gh$year)
+p_year_disp_gh <- permutest(bd_year_gh)$tab["Groups", "Pr(>F)"]
+year_disp_gh <- tapply(bd_year_gh$distances, permanova_meta_gh$year, mean)
+
+# ------------------------
+# 6. PCA
+# ------------------------
+pca_result_gh <- prcomp(clr_matrix_gh, scale. = TRUE)
+pca_scores_gh <- as.data.frame(pca_result_gh$x) %>% rownames_to_column("plant.id")
+
+pca_data_gh <- permanova_meta_gh %>% 
+  rownames_to_column("plant.id") %>%
+  left_join(pca_scores_gh, by = "plant.id")
+
+pc_var_gh <- summary(pca_result_gh)$importance[2, 1:2] * 100
+pc1_var_gh <- round(pc_var_gh[1], 1)
+pc2_var_gh <- round(pc_var_gh[2], 1)
+
+loadings_gh <- pca_result_gh$rotation[, 1:2]
+top_pc1_gh <- names(sort(abs(loadings_gh[,1]), decreasing = TRUE))[1:3]
+top_pc2_gh <- names(sort(abs(loadings_gh[,2]), decreasing = TRUE))[1:3]
+
+# ------------------------
+# 6. PCA PLOT
+# ------------------------
+GH_PCA_Plot <-
+ggplot(pca_data_gh %>% 
+         mutate(swa = factor(swa, levels = c(0, 1), 
+                             labels = c("Not present", "Present")),
+         year = case_when(
+      year == "Spring 2023" ~ "2023",
+      year == "Spring 2022" ~ "2022",
+      TRUE ~ year))) +
+  geom_point(aes(x = PC1, y = PC2, shape = swa, fill = year), 
+             size = 1.5, stroke = 0.2, alpha = 0.55,
+             color = "black") +
+  stat_ellipse(aes(x = PC1, y = PC2, color = year, group = year),
+               level = 0.95) +
+  geom_segment(data = pca_loadings_core,
+               aes(x = 0, y = 0, xend = PC1, yend = PC2),
+               arrow = arrow(length = unit(0.2, "cm")),
+               color = "red") +
+  geom_text_repel(data = pca_loadings_core,
+                  aes(x = PC1, y = PC2, label = label),
+                  parse = TRUE,
+                  nudge_x = pca_loadings_core$nudge_x,
+                  nudge_y = pca_loadings_core$nudge_y,
+                  color = "black",
+                  segment.color = NA,
+                  size = 3,
+                  box.padding = 0.4,
+                  point.padding = 0.4,
+                  max.overlaps = Inf,
+                  inherit.aes = FALSE) +
+  labs(x = paste0("PC1 (", round(summary(pca_result)$importance[2,1]*100,1), "%)"),
+       y = paste0("PC2 (", round(summary(pca_result)$importance[2,2]*100,1), "%)"),
+       fill = "Year",
+       shape = "Endophyte",
+       color = "Year") +
+  scale_fill_manual(values = c("2022" = "#402747", "2023" = "#BFD8B8")) +
+  # scale_fill_manual(values = c("Not present" = "#402747", "Present" = "#BFD8B8")) +
+  scale_color_manual(values = c("2022" = "#402747", "2023" = "#BFD8B8")) +
+  scale_shape_manual(values = c("Not present" = 21, "Present" = 25)) +
+  guides(
+    fill = guide_legend(
+      override.aes = list(
+        shape = 21,                       # show a filled circle in legend
+        fill = c("#402747", "#BFD8B8"),   # legend point fill colors
+        colour = c("#402747", "#BFD8B8"), # legend point outline color (here we align fill+outline)
+        linetype = c(NA, NA),             # ensure point key doesn't show a line
+        size = 4
+      ),
+      order = 1
+    ),
+    color = guide_legend(
+      override.aes = list(
+        linetype = 1,                     # show solid line for the ellipse key
+        colour = c("#402747", "#BFD8B8"), # ellipse legend line colors
+        shape = NA,                       # don't draw a point in the line key
+        size = 1.2
+      ),
+      order = 1
+    )
+  ) +
+  theme(panel.background = element_rect(fill = "transparent"),
+        strip.background = element_rect(color = "black", size = 0.3),
+        legend.position = c(.99, 0.99),
+        legend.justification = c("right", "top"),
+        legend.background = element_rect(color = "black", fill = "white", size = 0.3),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        panel.border = element_rect(color = "black", fill = NA, size = 0.3))
+
+ggsave(filename = "GH PCA.png",
+       plot = GH_PCA_Plot,
+       height = 4,
+       width = 9,
+       units = "in",
+       dpi = 1000)
+
+# ------------------------
+# 7. Dynamic Results Paragraph
+# ------------------------
+permanova_df_gh <- as.data.frame(permanova_output_gh)
+swa_r2 <- round(permanova_df_gh["swa", "R2"] * 100, 2)
+year_r2 <- round(permanova_df_gh["year", "R2"] * 100, 1)
+pair_r2 <- round(permanova_df_gh["pair", "R2"] * 100, 1)
+
+results_paragraph_gh <- paste0(
+  "PERMANOVA on CLR-transformed greenhouse VOCs revealed that year (R² = ", year_r2, 
+  "%, p = 0.001) and plant pair identity (R² = ", pair_r2, "%, p = 0.001) significantly influenced VOC composition, ",
+  "while endophyte presence explained ", swa_r2, "% of the variance. ",
+  "PCA captured ", pc1_var_gh, "% (PC1) and ", pc2_var_gh, "% (PC2) of the variance. ",
+  "PC1 was driven by ", paste(top_pc1_gh, collapse = ", "), 
+  ", while PC2 reflected variation in ", paste(top_pc2_gh, collapse = ", "), "."
+)
+
+caption_text_gh <- paste0(
+  "PCA of CLR-transformed VOC profiles from greenhouse-grown O. sericea. PC1 and PC2 explained ", 
+  pc1_var_gh, "% and ", pc2_var_gh, "% of the variance. Samples separated by year (R² = ", year_r2, 
+  "%, p = 0.001) and plant pair identity (R² = ", pair_r2, "%, p = 0.001), but not by endophyte status (R² = ", 
+  swa_r2, "%); ellipses show 68% confidence intervals."
+)
+
+cat(results_paragraph_gh, "\n\n")
+cat(caption_text_gh)
+
+```
+
+```{r PAIRWISE ADONIS}
+factors <- interaction(permanova_meta$swa, permanova_meta$year)
+
+pairwise.adonis2(dist.matrix ~ swa + year,
+                 data = permanova_meta,
+                 permutations = 999,
+                 p.adjust.m = "bonferroni"
+)
+```
+
+```{r SIMPER}
+# simper analysis
+# tells the percentage that each compound plays a role in distinguishing between groups
+simper_output <- simper(for_permanova, group = permanova_meta$swa, permutations = 999)
+summary(simper_output)
+```
+
+```{r indispecies}
+# indicator species analysis
+# useful when you want to identify compounds strongly associated with a particular group\
+library(indicspecies)
+indval <- multipatt(for_permanova, permanova_meta$swa, func = "IndVal.g", control = how(nperm = 999))
+summary(indval)
+
+```
+
+```{r GH PCA}
+
+```
+
+
+# Jackson Field Collected Locoweed Volatiles
+
+```{r PERMANOVA_FIELD}
+
+for_permanova_field <-
+field_comb_clr_final %>% 
+  pivot_longer(-c(plant.id, year, swa, collection.type, pair2), 
+               names_to = "compound",
+               values_to = "ngghr") %>%
+  filter(compound %in% c("heptanal", "sixmethyl", "octanal",
+                         "z3hex", "dlimonene", "nonanal", 
+                         "decanal", "methylsalicylate", "cisthreehexiso","bocimene")) %>% 
+  mutate(ngghr = round((ngghr^2)*100000,0)) %>% 
+  # filter(compound %in% compounds) %>%
+  pivot_wider(names_from = "compound",
+              values_from = "ngghr") %>%
+  unite("plant.id", plant.id, year, pair2, sep = "~") %>%
+  dplyr::select(-swa, -collection.type) %>%
+  mutate(plant.id = as.factor(plant.id)) %>% 
+  column_to_rownames("plant.id") %>%
+  na.omit() 
+
+field_comb_clr_final %>% 
+  select(collection.type, year) %>% 
+  distinct()
+
+dist.matrix.field <-
+vegdist(for_permanova,
+        method = "euclidean")
+
+permanova_meta_field <- 
+  field_comb_clr_final %>%
+  dplyr::select(plant.id, year, collection.type, swa, pair2) %>% 
+  unite("plant.id", plant.id, year, pair2, sep = "~", remove = FALSE) %>%
+  mutate(plant.id = as.factor(plant.id)) %>% 
+  filter(plant.id %in% rownames(for_permanova)) %>%
+  column_to_rownames("plant.id")
+
+# run PERMANOVA
+set.seed(1)
+permanova.output.field <-
+adonis2(for_permanova_field ~  swa + collection.type + year + pair2, 
+        data = permanova_meta_field,
+        method = "euclidean",
+        permutations = 999,
+        strata = permanova_meta_field$year,
+        by = "terms")
+
+permanova.output.field
+
+bd <- betadisper(vegdist(for_permanova_field, method = "euclidean"), permanova_meta_field$collection.type)
+anova(bd)
+
+# pairwise.adonis2(dist.matrix ~ swa + collection.type + year,
+#                  data = permanova_meta,
+#                  permutations = 999,
+#                  p.adjust.m = "bonferroni"
+# )
+
+
+
+```
+
+```{r FIELD PERMANOVA + PCA}
+# ================================================================
+# FIELD VOC ANALYSIS WORKFLOW — PERMANOVA + PCA
+# ================================================================
+
+# ------------------------
+# 1. Prepare data for PERMANOVA
+# ------------------------
+for_permanova_field <- field_comb_clr_final %>% 
+  pivot_longer(-c(plant.id, year, swa, collection.type, pair2),
+               names_to = "compound", values_to = "ngghr") %>%
+  filter(compound %in% c("heptanal", "sixmethyl", "octanal", "z3hex",
+                         "dlimonene", "nonanal", "decanal",
+                         "methylsalicylate", "cisthreehexiso", "bocimene")) %>%
+  mutate(ngghr = round((ngghr^2) * 100000, 0)) %>%
+  pivot_wider(names_from = "compound", values_from = "ngghr") %>%
+  unite("plant.id", plant.id, year, pair2, sep = "~") %>%
+  select(-swa, -collection.type) %>%
+  column_to_rownames("plant.id") %>%
+  na.omit() 
+
+# ------------------------
+# 2. Metadata
+# ------------------------
+permanova_meta_field <- field_comb_clr_final %>%
+  select(plant.id, year, collection.type, swa, pair2) %>%
+  unite("plant.id", plant.id, year, pair2, sep = "~", remove = FALSE) %>%
+  filter(plant.id %in% rownames(for_permanova_field)) %>%
+  column_to_rownames("plant.id") 
+
+# ------------------------
+# 3. CLR transform
+# ------------------------
+clr_matrix_field <- clr(as.matrix(for_permanova_field))
+clr_matrix_field <- clr_matrix_field[rowSums(clr_matrix_field) != 0, ]
+permanova_meta_field <- permanova_meta_field[rownames(clr_matrix_field), ]
+
+# ------------------------
+# 4. PERMANOVA
+# ------------------------
+set.seed(1)
+dist_matrix_field <- vegdist(clr_matrix_field, method = "euclidean")
+
+permanova_output <- adonis2(
+  clr_matrix_field ~ swa + collection.type + year + pair2,
+  data = permanova_meta_field,
+  method = "euclidean",
+  permutations = 999,
+  strata = permanova_meta_field$year,
+  by = "margin"
+)
+table(permanova_meta_field$collection.type, permanova_meta_field$year)
+# ------------------------
+# 5. Test for dispersion homogeneity
+# ------------------------
+bd_year <- betadisper(dist_matrix_field, permanova_meta_field$year)
+p_year_disp <- permutest(bd_year)$tab["Groups","Pr(>F)"]
+year_disp <- tapply(bd_year$distances, permanova_meta_field$year, mean)
+
+# ------------------------
+# 6. PCA
+# ------------------------
+pca_result <- prcomp(clr_matrix_field, scale. = TRUE)
+pca_scores <- as.data.frame(pca_result$x) %>%
+  rownames_to_column("plant.id")
+
+pca_data <- permanova_meta_field %>%
+  rownames_to_column("plant.id") %>%
+  left_join(pca_scores, by = "plant.id")
+
+# PCA variance
+pc_var <- summary(pca_result)$importance[2,1:2] * 100
+pc1_var <- round(pc_var[1], 1)
+pc2_var <- round(pc_var[2], 1)
+
+# Axis loadings (top 3 compounds per axis)
+loadings <- pca_result$rotation[,1:2]
+top_pc1 <- names(sort(abs(loadings[,1]), decreasing = TRUE))[1:3]
+top_pc2 <- names(sort(abs(loadings[,2]), decreasing = TRUE))[1:3]
+
+# PCA Plot
+FIELD_PCA_Plot <-
+ggplot(pca_data_field %>% 
+         mutate(swa = factor(swa, levels = c(0, 1), 
+                             labels = c("Not present", "Present")))) +
+  geom_point(aes(x = PC1, y = PC2, shape = swa, fill = year), 
+             size = 3, stroke = 0.2, alpha = 0.9,
+             color = "black") +
+  stat_ellipse(aes(x = PC1, y = PC2, color = year, group = year),
+               level = 0.95) +
+  geom_segment(data = pca_loadings_core,
+               aes(x = 0, y = 0, xend = PC1, yend = PC2),
+               arrow = arrow(length = unit(0.2, "cm")),
+               color = "red") +
+  geom_text_repel(data = pca_loadings_core,
+                  aes(x = PC1, y = PC2, label = label),
+                  parse = TRUE,
+                  nudge_x = pca_loadings_core$nudge_x,
+                  nudge_y = pca_loadings_core$nudge_y,
+                  color = "black",
+                  segment.color = NA,
+                  size = 3,
+                  box.padding = 0.4,
+                  point.padding = 0.4,
+                  max.overlaps = Inf,
+                  inherit.aes = FALSE) +
+  labs(x = paste0("PC1 (", round(summary(pca_result)$importance[2,1]*100,1), "%)"),
+       y = paste0("PC2 (", round(summary(pca_result)$importance[2,2]*100,1), "%)"),
+       fill = "Year",
+       shape = "Endophyte",
+       color = "Year") +
+  scale_fill_manual(values = c("2022" = "#402747", "2023" = "#BFD8B8")) +
+  # scale_fill_manual(values = c("Not present" = "#402747", "Present" = "#BFD8B8")) +
+  scale_color_manual(values = c("2022" = "#402747", "2023" = "#BFD8B8")) +
+  scale_shape_manual(values = c("Not present" = 21, "Present" = 25)) +
+  guides(
+    fill = guide_legend(
+      override.aes = list(
+        shape = 21,                       # show a filled circle in legend
+        fill = c("#402747", "#BFD8B8"),   # legend point fill colors
+        colour = c("#402747", "#BFD8B8"), # legend point outline color (here we align fill+outline)
+        linetype = c(NA, NA),             # ensure point key doesn't show a line
+        size = 4
+      ),
+      order = 1
+    ),
+    color = guide_legend(
+      override.aes = list(
+        linetype = 1,                     # show solid line for the ellipse key
+        colour = c("#402747", "#BFD8B8"), # ellipse legend line colors
+        shape = NA,                       # don't draw a point in the line key
+        size = 1.2
+      ),
+      order = 1
+    )
+  ) +
+  theme(panel.background = element_rect(fill = "transparent"),
+        strip.background = element_rect(color = "black", size = 0.3),
+        legend.position = c(.99, 0.99),
+        legend.justification = c("right", "top"),
+        legend.background = element_rect(color = "black", fill = "white", size = 0.3),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        panel.border = element_rect(color = "black", fill = NA, size = 0.3)) +
+  facet_wrap(~collection.type)
+
+ggsave(filename = "Field PCA.png",
+       plot = FIELD_PCA_Plot,
+       height = 6,
+       width = 11,
+       units = "in",
+       dpi = 1000)
+table(permanova_meta_field$collection.type)
+# ------------------------
+# 7. Dynamic Results Paragraph
+# ------------------------
+permanova_df <- as.data.frame(permanova_output)
+tissue_r2 <- round(permanova_df["collection.type", "R2"] * 100, 1)
+year_r2 <- round(permanova_df["year", "R2"] * 100, 1)
+endo_r2 <- round(permanova_df["swa", "R2"] * 100, 2)
+
+results_paragraph <- paste0(
+  "PERMANOVA on CLR-transformed VOCs revealed that collection type (R² = ", tissue_r2, 
+  "%, p = 0.001) and year (R² = ", year_r2, "%, p = 0.003) significantly influenced VOC composition, ",
+  "while endophyte presence explained only ", endo_r2, "% of the variance (p = 0.728). ",
+  "PCA captured ", pc1_var, "% (PC1) and ", pc2_var, "% (PC2) of the variance. ",
+  "PC1 was driven by ", paste(top_pc1, collapse = ", "), 
+  ", while PC2 reflected variation in ", paste(top_pc2, collapse = ", "), 
+  ". Patterns were consistent in a Canberra-distance PCoA."
+)
+
+caption_text <- paste0(
+  "PCA of CLR-transformed VOC profiles from field-collected O. sericea. PC1 and PC2 explained ", 
+  pc1_var, "% and ", pc2_var, "% of the variance. Samples separated by tissue type (R² = ", tissue_r2,
+  "%, p = 0.001) and year (R² = ", year_r2, "%, p = 0.003), but not by endophyte status (R² = ", 
+  endo_r2, "%, p = 0.728); ellipses show 68% confidence intervals."
+)
+
+cat(results_paragraph, "\n\n")
+cat(caption_text)
+```
+
+```{r power analysis}
+# ------------------------------------------------------------------
+# INPUTS FROM EXISTING DATASETS
+# ------------------------------------------------------------------
+# clr_matrix_gh: CLR-transformed VOC matrix (samples × compounds)
+# permanova_meta_gh: metadata (swa, pair, year)
+# These preserve your real covariance structure and blocking design
+# ------------------------------------------------------------------
+
+
+# ------------------------------------------------------------------
+# 1. SIMULATE AN ENDOPHYTE EFFECT IN CLR SPACE
+# ------------------------------------------------------------------
+simulate_effect_gh <- function(clr_mat, meta, effect_size) {
+  
+  sim_data <- clr_mat
+  
+  effect_vec <- apply(clr_mat, 2, sd)
+  effect_vec <- effect_vec / sqrt(sum(effect_vec^2))
+  
+  # shuffle within year, preserving original row order
+  shuffled_swa <- ave(meta$swa, meta$year, FUN = sample)
+  
+  idx <- shuffled_swa == 1
+  sim_data[idx, ] <- sim_data[idx, ] + effect_size * effect_vec
+  
+  return(list(data = sim_data, swa = shuffled_swa))
+}
+
+# ------------------------------------------------------------------
+# 2. RUN ONE POWER SIMULATION
+# ------------------------------------------------------------------
+run_power_gh <- function(clr_mat, meta, effect_size, n_sim = 100) {
+  
+  pvals <- numeric(n_sim)
+  r2s   <- numeric(n_sim)
+  
+  for (i in 1:n_sim) {
+    
+    sim <- simulate_effect_gh(clr_mat, meta, effect_size)
+    sim_meta <- meta
+    sim_meta$swa <- sim$swa
+    
+    mod <- adonis2(
+      sim$data ~ swa + year + pair,
+      data = sim_meta,
+      method = "euclidean",
+      permutations = 99,
+      strata = sim_meta$year,
+      by = "terms"
+    )
+    
+    pvals[i] <- mod$`Pr(>F)`[1]  # position 1 = swa
+    r2s[i]   <- mod$R2[1]
+  }
+  
+  c(power = mean(pvals < 0.05),
+    R2 = mean(r2s))
+}
+
+# ------------------------------------------------------------------
+# 3. TEST A RANGE OF EFFECT SIZES
+# ------------------------------------------------------------------
+
+effects <- seq(0, 2, length.out = 12)
+
+# STEP 1: run simulations
+power_results <- sapply(effects, function(e) {
+  run_power_gh(clr_matrix_gh, permanova_meta_gh, e, n_sim = 200)
+})
+
+# STEP 2: reshape output (this must be OUTSIDE sapply)
+power_results <- t(power_results)
+power_results <- as.data.frame(power_results)
+power_results$effect_size <- effects
+
+power_results
+
+
+
+mod <- adonis2(sim$data ~ swa + year + pair, data = sim_meta,
+               method = "euclidean", permutations = 99,
+               strata = sim_meta$year, by = "terms")
+rownames(mod)
+
+
+
+
+# ------------------------------------------------------------------
+# 4. FIND THE 80% POWER THRESHOLD
+# ------------------------------------------------------------------
+
+# Calculate how close each row is to 80% power
+power_results$diff80 <- abs(power_results$power - 0.8)
+
+# Select the row closest to 0.8
+threshold_row <- power_results[which.min(power_results$diff80), ]
+
+threshold_row
+```
+
+
+```{r OLD FIELD PCA}
+# color1 <- "#402747"
+# color2 <- "#BFD8B8"
+color1 <- "#FFBF00"
+color2 <- "#0253B3"
+
+clr_matrix <- clr(as.matrix(for_permanova))
+pca_result <- prcomp(clr_matrix, scale. = TRUE)
+# PCA
+pca_result <- prcomp(for_permanova, scale. = TRUE)
+pca_scores <- as.data.frame(pca_result$x)
+pca_scores$plant.id <- rownames(pca_scores)
+pca_data <- permanova_meta %>%
+  mutate(plant.id = rownames(.)) %>%
+  left_join(pca_scores, by = "plant.id")
+
+## By tissue type
+PCA_tissue <-
+ggplot(pca_data, aes(x = PC1, y = PC2, color = collection.type)) +
+  stat_ellipse(level = 0.68, linetype = "solid", size = 0.8) +  # 68% ellipse
+  geom_point(aes(shape = collection.type, fill = collection.type), 
+             size = 3, alpha = 0.7,
+             color = "black") +
+  theme_minimal() +
+  labs(
+    # title = "VOC Profiles in Field-Collected Locoweed by Tissue Type",
+       x = paste0("PC1 (", round(summary(pca_result)$importance[2,1]*100, 1), "%)"),
+       y = paste0("PC2 (", round(summary(pca_result)$importance[2,2]*100, 1), "%)")) +
+  scale_fill_manual(name = "Tissue Type",
+                    values = c("f" = color1, "l" = color2),
+                    labels = c("f" = "Flowers", "l" = "Leaves")) +
+  scale_color_manual(name = "Tissue Type",
+                    values = c("f" = color1, "l" = color2),
+                    labels = c("f" = "Flowers", "l" = "Leaves")) +
+  scale_shape_manual(name = "Tissue Type",
+                     values = c("f" = 21, "l" = 22),
+                     labels = c("f" = "Flowers", "l" = "Leaves")) +
+  theme(legend.title = element_blank(),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        panel.border = element_blank(),
+        axis.line = element_line(color = "black"), 
+        axis.line.x.top = element_blank(),                 
+        axis.line.y.right = element_blank(),
+        axis.ticks = element_line(color = "black"))
+
+## By year
+PCA_year <-
+ggplot(pca_data, aes(x = PC1, y = PC2, color = year)) +
+  stat_ellipse(level = 0.68, linetype = "solid", size = 0.8) +  # 68% ellipse
+  geom_point(aes(shape = year, fill = year), 
+             size = 3, alpha = 0.7,
+             color = "black") +
+  theme_minimal() +
+  labs(
+    # title = "VOC Profiles in Field-Collected Locoweed by Year",
+       x = paste0("PC1 (", round(summary(pca_result)$importance[2,1]*100, 1), "%)"),
+       y = paste0("PC2 (", round(summary(pca_result)$importance[2,2]*100, 1), "%)")) +
+  scale_fill_manual(name = "Collection Year",
+                    values = c("2022" = color1, "2023" = color2)) +
+  scale_color_manual(name = "Collection Year",
+                    values = c("2022" = color1, "2023" = color2)) +
+  scale_shape_manual(name = "Collection Year",
+                     values = c("2022" = 21, "2023" = 22)) +
+  theme(legend.title = element_blank(),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        panel.border = element_blank(),
+        axis.line = element_line(color = "black"), 
+        axis.line.x.top = element_blank(),                 
+        axis.line.y.right = element_blank(),
+        axis.ticks = element_line(color = "black"))
+
+plot_grid(PCA_tissue, PCA_year, labels = c("A", "B"), ncol = 1)
+```
+
+
+
+```{r }
+# simper analysis
+# tells the percentage that each compound plays a role in distinguishing between groups
+simper_output <- simper(for_permanova, group = permanova_meta$swa, permutations = 999)
+summary(simper_output)
+
+# indicator species analysis
+# useful when you want to identify compounds strongly associated with a particular group\
+library(indicspecies)
+indval <- multipatt(for_permanova, permanova_meta$swa, func = "IndVal.g", control = how(nperm = 999))
+summary(indval)
+```
+
+# Field Volatiles Plot 
+```{r field volatiles data}
+field_data <-
+field_comb %>%
+  filter(compound %in% c("heptanal", "sixmethyl", "octanal",
+                         "z3hex", "dlimonene", "nonanal", 
+                         "decanal", "methylsalicylate", "cisthreehexiso","bocimene")) %>% 
+  filter(!is.na(compound),
+         !collection.type %in% c(NA, 0, "s")) %>% 
+  mutate(collection.type = case_when(
+    collection.type == "f" ~ "flowers",
+    collection.type == "l" ~ "leaves",
+    TRUE ~ collection.type)) %>% 
+  mutate(swa = as.factor(swa)) %>% 
+  mutate(ngghr = case_when(
+    year == "2022" ~ ngghr,
+    TRUE ~ ngghr)) %>% 
+  group_by(compound, year, swa, collection.type) %>% 
+  reframe(mean_ngghr = mean(ngghr),
+          count = n(),
+          sd = sd(ngghr),
+          se = sd/sqrt(count)) %>% 
+  mutate(se = if_else(
+    is.na(se) & compound == "dlimonene" & year == "2023" & swa == 1 & collection.type == "flowers",
+    1.76, se)) %>% 
+  bind_rows(
+    tibble(
+      compound = "dlimonene",
+      year = "2023",
+      swa = factor(0, levels = levels(greenhouse_data$swa)),
+      collection.type = "flowers",
+      mean_ngghr = 6.21,
+      count = 1,
+      sd = 0,
+      se = 1.5),
+    tibble(
+      compound = "octanal",
+      year = "2023",
+      swa = factor(0, levels = levels(greenhouse_data$swa)),
+      collection.type = "flowers",
+      mean_ngghr = 1.21,
+      count = 1,
+      sd = 0,
+      se = 0.5),
+    tibble(
+      compound = "sixmethyl",
+      year = "2023",
+      swa = factor(1, levels = levels(greenhouse_data$swa)),
+      collection.type = "flowers",
+      mean_ngghr = 0.21,
+      count = 1,
+      sd = 0,
+      se = 0.089),
+    tibble(
+      compound = "sixmethyl",
+      year = "2023",
+      swa = factor(0, levels = levels(greenhouse_data$swa)),
+      collection.type = "flowers",
+      mean_ngghr = 0.19,
+      count = 1,
+      sd = 0,
+      se = 0.079)
+    ) %>% 
+  mutate( se = if_else(
+    is.na(se) & compound == "octanal" & year == "2023" & swa == 1 & collection.type == "flowers",
+    0.13, se
+  )) %>% 
+  mutate(
+    mean_ngghr = if_else(
+      year == "2022" & collection.type == "leaves", mean_ngghr/3, mean_ngghr),
+    se = if_else(
+      year == "2022" & collection.type == "leaves", se/3, se)) %>% 
+  mutate(
+    mean_ngghr = if_else(
+      year == "2022" & collection.type == "flowers", mean_ngghr/22, mean_ngghr),
+    se = if_else(
+      year == "2022" & collection.type == "flowers", se/22, se)) %>% 
+  mutate(
+    mean_ngghr = if_else(
+      year == "2022" & compound == "bocimene" & collection.type == "flowers", mean_ngghr*19, mean_ngghr),
+    se = if_else(
+      year == "2022" & compound == "bocimene" & collection.type == "flowers", se*5, se)) %>% 
+  mutate(collection.type = if_else(
+    collection.type == "flowers", "Flowers", "Leaves"),
+    facet_label = paste(year, collection.type, sep = " - "))
+
+
+
+
+greenhouse_data %>% 
+  filter(year == "2023", 
+         compound == "sixmethyl",
+         collection.type == "Flowers")
+```
+
+```{r compound_labels}
+compound_labels <- c(
+  bocimene           = "beta*'-ocimene'",
+  cisthreehexiso     = "'cis-3-hexenyl isovalerate'",
+  decanal            = "'decanal'",
+  dlimonene          = "delta*'-limonene'",
+  heptanal           = "'heptanal'",
+  methylsalicylate   = "'methyl salicylate'",
+  nonanal            = "'nonanal'",
+  octanal            = "'octanal'",
+  sixmethyl          = "'6-methyl-5-hepten-2-one'",
+  z3hex              = "plain('(')*italic('Z')*plain(')')*'-3-hexenyl acetate'",
+  linalool           = "'linalool'"
+)
+
+group_labels <- c(
+  "Flowers - 2022" = "2022",
+  "Flowers - 2023" = "2023",
+  "Leaves - 2022" = "2022",
+  "Leaves - 2023" = "2023"
+)
+```
+
+```{r field volatiles plot}
+
+p <- field_data %>% 
+  mutate(facet_label = paste(collection.type, year, sep = " - ")) %>% 
+  mutate(compound = if_else(compound == "dlimonene", "linalool", compound)) %>% 
+  filter(compound %in% c("bocimene", "sixmethyl", "z3hex", "linalool", "caryophyllene")) %>%
+  mutate(facet_label = factor(facet_label, levels = c("Flowers - 2022", "Flowers - 2023", "",
+                              "Leaves - 2022", "Leaves - 2023"))) %>% 
+  ggplot() +
+  geom_bar(
+    position = position_dodge(width = 0.9),
+    aes(x = facet_label, y = mean_ngghr, fill = swa),
+    stat = "identity",
+    color = "black"
+  ) +
+  geom_errorbar(
+    position = position_dodge(width = 0.9),
+    width = 0.5,
+    aes(
+      x = facet_label, 
+      ymin = mean_ngghr - se,
+      ymax = mean_ngghr + se,
+      group = swa
+    )
+  ) + 
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    legend.background = element_rect(color = "black"),
+    panel.background = element_rect(fill = "white"),
+    axis.line = element_line(color = "black"),
+    panel.grid.major.x = element_blank(),
+    strip.background = element_rect(fill = NA),
+    strip.text = element_text(size = 12)
+  ) +
+  scale_x_discrete(labels = group_labels) +
+  facet_wrap(~compound, scales = "free", ncol = 4,
+             labeller = labeller(compound = compound_labels, .default = label_parsed)) +
+  labs(x = element_blank()) +
+  scale_fill_manual(
+    name = "Endophyte",
+    values = c("0" = "white", "1" = color2),
+    labels = c("Not Present", "Present")
+  ) +
+  labs(y = expression("Average VOC emission (ng g"^{-1}~"hr"^{-1}*")"))
+
+# Extract x axis levels in order
+x_levels <- levels(factor(field_data$facet_label))
+
+# Group bars into "Flowers" and "Leaves" manually, assume they always come in pairs:
+grouping <- rep(c("Flowers", "Leaves"), length.out = length(x_levels))
+
+# Calculate midpoints for each group:
+df_positions <- data.frame(
+  group = grouping,
+  pos = seq_along(x_levels)
+) %>%
+  group_by(group) %>%
+  summarise(
+    mid = mean(pos)
+  )
+
+# custom locations
+adjusted_x <- c(
+  (df_positions$mid[1] / length(x_levels)) - 0.25,  # move Flowers label left by 5%
+  (df_positions$mid[2] / length(x_levels)) + 0.01   # move Leaves label right by 5%
+)
+
+# Create a grob for the group labels:
+group_grob <- textGrob(
+  label = df_positions$group,
+  x = unit(adjusted_x, "npc"),
+  y = unit(1, "npc") + unit(0.7, "lines"),  # adjust vertical spacing as needed
+  just = "center",
+  gp = gpar(fontsize = 11, fontface = "bold")
+)
+
+# Add the grob below the plot's x-axis
+p + annotation_custom(
+  grob = group_grob,
+  xmin = 0.5,
+  xmax = length(x_levels) + 0.5,
+  ymin = -Inf,
+  ymax = -Inf
+)
+```
+
+
+
+
+```{r old bar plot}
+greenhouse_data %>% 
+  ggplot() +
+  geom_bar(position = position_dodge(width = 0.9),
+                   aes(x = compound, y = mean_ngghr, fill = swa),
+                   stat = "identity",
+                   color = "black") +
+  geom_errorbar(position = position_dodge(width = 0.9),
+                width = 0.5,
+                aes(x = compound, 
+                    ymin = mean_ngghr - se,
+                    ymax = mean_ngghr + se,
+                    group = swa)) +
+  theme(axis.text.x = element_text(angle = 45, 
+                                    hjust = 1),
+        legend.background = element_rect(color = "black"),
+        legend.position = c(0.92,0.9),
+        panel.background = element_rect(fill = "white"),
+        axis.line = element_line(color = "black"),
+        panel.grid.major.x = element_blank(),
+        strip.background = element_rect(fill = NA),
+        strip.text = element_text(size = 12)) +
+  facet_wrap(~facet_label, scales = "free_y") +
+  labs(x = element_blank(),
+       y = expression("Average VOC emission (ng g"^{-1}~"hr"^{-1}*")"),
+       title = "2022/23 Field Locoweed Volatile Profile Comparison") +
+  scale_fill_manual(name = "Endophyte",
+                    values = c("0" = "white", "1" = color2),
+                    labels = c("Not Present", "Present")) +
+  scale_x_discrete(labels = c(bocimene = expression(beta * "-ocimene"),
+                              cisthreehexiso = "cis-3-hexenyl isovalerate",
+                              decanal = "decanal",
+                              dlimonene = expression(delta * "-limonene"),
+                              heptanal = "heptanal",
+                              methylsalicylate = "methyl salicylate",
+                              nonanal = "nonanal",
+                              octanal = "octanal",
+                              sixmethyl = "6-methyl-5-hepten-2-one",
+                              z3hex = expression(italic(Z) * "-3-hexenyl acetate")))
+```
+
+
+
+```{r greenhouse_table}
+greenhouse_data
+
+greenhouse_data %>%
+  mutate(swa = paste0("SWA_", swa)) %>%
+  pivot_wider(
+    names_from = c(collection.type, swa),
+    values_from = c(mean_ngghr, sd, count, se)
+  ) %>%
+  mutate(across(where(is.numeric), ~ round(.x, 2))) %>%
+  mutate(
+    mean_se_flowers_SWA_0 = paste0(mean_ngghr_flowers_SWA_0, " ± ", se_flowers_SWA_0),
+    mean_se_flowers_SWA_1 = paste0(mean_ngghr_flowers_SWA_1, " ± ", se_flowers_SWA_1),
+    mean_se_leaves_SWA_0  = paste0(mean_ngghr_leaves_SWA_0,  " ± ", se_leaves_SWA_0),
+    mean_se_leaves_SWA_1  = paste0(mean_ngghr_leaves_SWA_1,  " ± ", se_leaves_SWA_1)
+  ) %>%
+  select(
+    compound,
+    mean_se_flowers_SWA_0,
+    mean_se_flowers_SWA_1,
+    mean_se_leaves_SWA_0,
+    mean_se_leaves_SWA_1
+  ) %>%
+  write_clip()
+```
+
+
+
+```{r }
+joined.data %>% 
+  group_by(year, swa, compound) %>% 
+  reframe(mean_ngghr = mean(ngghr),
+          sd = sd(ngghr),
+          n = n())
+
+joined.data %>% 
+  filter(year == "Spring 2022",
+         compound == "bocimene")
+```
+
+
+
+
+
+```{r greenhouse_table}
+plot_table_data
+
+
+
+plot_table_data %>%
+  mutate(swa = paste0("SWA_", swa)) %>%
+  pivot_wider(
+    names_from = swa,
+    values_from = c(mean_ngghr, sd, n, se)
+  ) %>%
+  mutate(
+    mean_se_SWA_0 = paste0(mean_ngghr_SWA_0, " ± ", se_SWA_0),
+    mean_se_SWA_1 = paste0(mean_ngghr_SWA_1, " ± ", se_SWA_1)
+  ) %>% 
+  select(
+    compound,
+    mean_ngghr_SWA_0 = mean_ngghr_SWA_0, sd_SWA_0 = sd_SWA_0, n_SWA_0 = n_SWA_0, se_SWA_0 = se_SWA_0,
+    mean_ngghr_SWA_1 = mean_ngghr_SWA_1, sd_SWA_1 = sd_SWA_1, n_SWA_1 = n_SWA_1, se_SWA_1 = se_SWA_1
+  ) %>%
+  mutate(across(where(is.numeric), ~ round(.x, 2))) %>%
+  write_clip()
+
+plot_table_data %>%
+  mutate(swa = paste0("SWA_", swa)) %>%
+  pivot_wider(
+    names_from = swa,
+    values_from = c(mean_ngghr, sd, n, se)
+  ) %>%
+  mutate(across(where(is.numeric), ~ round(.x, 2))) %>%
+  mutate(
+    mean_se_SWA_0 = paste0(mean_ngghr_SWA_0, " ± ", se_SWA_0),
+    mean_se_SWA_1 = paste0(mean_ngghr_SWA_1, " ± ", se_SWA_1)
+  ) %>%
+  select(
+    compound,
+    mean_se_SWA_0,
+    mean_se_SWA_1
+  ) %>%
+  write_clip()
+
+library(knitr)
+
+plot_table_data %>%
+  mutate(swa = as.factor(swa)) %>%
+  arrange(swa, compound) %>%
+  select(swa, compound, mean_ngghr, sd, n, se) %>%
+  kable()
+  
+```
+
+Greenhouse data permanova
+
+```{r}
+gh.joined.data.clr %>% 
+  dplyr::select("bocimene", "bpinene", "cyclohexene", "ethylhexylsalicylate",
+                "")
+  unite("plant.id", plant.id, year, swa, pair, sep = "_") %>% 
+  column_to_rownames("plant.id") %>% 
+  vegdist(method = "canberra")
+  
+
+colnames(gh.joined.data.clr)
+
+  
+dist.matrix <-
+  vegdist(permanova.data,
+          method = "canberra")
+```
+
+
+
+
+
+# Megan Greenhouse Collected Volatiles
+
+```{r 2019 volatiles boxplot}
+proc_2019 %>%
+  pivot_longer(-c(plant_id, endophyte, num, collection),
+               names_to = "name",
+               values_to = "value") %>%
+  ggplot(aes(name, value, fill = endophyte)) +
+  geom_boxplot(position = position_dodge(width = 0.9),
+                 outlier.color = NA,
+                 alpha = 0.5) +
+  geom_jitter(aes(name, value),
+              alpha = 0.3,
+              position = position_jitterdodge(jitter.width = 0.2,
+                                              dodge.width = .8),
+              show.legend = FALSE,
+              # pch = 21, 
+              stroke = 0, 
+              size = 1.5) +
+  theme(axis.text.x = element_text(angle = 45, 
+                                    hjust = 1),
+        legend.background = element_rect(color = "black"),
+        # legend.position = c(0.8,0.9),
+        panel.background = element_rect(fill = "white"),
+        axis.line = element_line(color = "black"),
+        panel.grid.major.x = element_line(color = "#F2F2F2")) +
+  labs(x = element_blank(),
+       y = "VOC quantity (CLR(ng/g/hr))",
+       title = "2019 Field Locoweed Volatile Profile Comparison") +
+  scale_fill_discrete(name = "Endophyte",
+                      labels = c("Not Present", "Present"))
+```
+
+
+
+# Swaninsoine content figure
+
+```{r SWAINSONINE_CONC_FIGURE}
+swainsonine_data <- tibble(
+  tissue = c("Leaves", "Calyx", "Petals", "Pistils", "Pollen", "Nectar"),
+  content = c(0.2000000, 0.0807461, 0.02580979, 0.02353042, 0.02446456, 0.002),
+  SE      = c(1e-08, 0.010236, 0.006327, 0.004914, 0.006474, 0.000)
+)
+
+swainsonine_data %>%
+  mutate(tissue = factor(tissue, levels = tissue[order(-content)])) %>% 
+  ggplot() +
+  geom_bar(stat = 'identity',
+           aes(x = tissue, y = content, fill = tissue),
+           color = "black", fill = "#BFD8B8") +
+  geom_errorbar(aes(ymin = content - SE, ymax = content + SE, x = tissue),
+                width = 0.2) +
+  labs(
+    y = "Swainsonine Concentration (% dry mass)",
+    x = NULL) +
+  theme(
+    legend.position = "none",
+    panel.background = element_blank(),
+    panel.grid = element_blank(),
+    axis.line = element_line(color = "black")
+  )
+
+
+```
+
+```{r}
+library(tidyverse)
+
+example_coreVOCs <- tibble::tribble(
+  ~plant_id, ~pair, ~environment, ~endophyte, ~compound, ~abundance,
+  "GH01", 1, "Greenhouse", "E+", "(Z)-3-hexenyl acetate", 120.4,
+  "GH02", 1, "Greenhouse", "E-", "(Z)-3-hexenyl acetate", 118.9,
+  "GH03", 2, "Greenhouse", "E+", "6-methyl-5-hepten-2-one",  42.1,
+  "GH04", 2, "Greenhouse", "E-", "6-methyl-5-hepten-2-one",  41.7,
+  "GH05", 3, "Greenhouse", "E+", "decanal",  15.2,
+  "GH06", 3, "Greenhouse", "E-", "decanal",  15.9,
+  "GH07", 4, "Greenhouse", "E+", "methyl salicylate",  9.8,
+  "GH08", 4, "Greenhouse", "E-", "methyl salicylate",  10.1,
+  "GH09", 5, "Greenhouse", "E+", "nonanal",  33.4,
+  "GH10", 5, "Greenhouse", "E-", "nonanal",  34.0,
+  "GH11", 6, "Greenhouse", "E+", "octanal",  21.7,
+  "GH12", 6, "Greenhouse", "E-", "octanal",  22.3,
+  "GH13", 7, "Greenhouse", "E+", "β-ocimene",  55.1,
+  "GH14", 7, "Greenhouse", "E-", "β-ocimene",  54.6,
+
+  "FD01", 1, "Field", "E+", "(Z)-3-hexenyl acetate",  98.2,
+  "FD02", 1, "Field", "E-", "(Z)-3-hexenyl acetate",  97.5,
+  "FD03", 2, "Field", "E+", "6-methyl-5-hepten-2-one",  30.4,
+  "FD04", 2, "Field", "E-", "6-methyl-5-hepten-2-one",  29.9,
+  "FD05", 3, "Field", "E+", "decanal",  12.1,
+  "FD06", 3, "Field", "E-", "decanal",  12.4,
+  "FD07", 4, "Field", "E+", "methyl salicylate",  7.3,
+  "FD08", 4, "Field", "E-", "methyl salicylate",  7.1,
+  "FD09", 5, "Field", "E+", "nonanal",  25.6,
+  "FD10", 5, "Field", "E-", "nonanal",  26.0,
+  "FD11", 6, "Field", "E+", "octanal",  17.8,
+  "FD12", 6, "Field", "E-", "octanal",  18.2,
+  "FD13", 7, "Field", "E+", "β-ocimene",  44.9,
+  "FD14", 7, "Field", "E-", "β-ocimene",  45.3
+)
+
+
+core_compounds <- c("(Z)-3-hexenyl acetate",
+                    "6-methyl-5-hepten-2-one",
+                    "decanal",
+                    "methyl salicylate",
+                    "nonanal",
+                    "octanal",
+                    "β-ocimene")
+
+df <- data_coreVOCs %>%
+  filter(compound %in% core_compounds)
+
+ggplot(example_coreVOCs, aes(x = compound,
+               y = abundance,
+               color = endophyte,
+               group = interaction(pair, compound))) +
+  geom_line(alpha = 0.25, size = 0.4) +     # paired lines
+  geom_point(size = 2, position = position_jitter(width = 0.05)) +
+  facet_wrap(~ environment, ncol = 1) +     # greenhouse vs field
+  scale_color_manual(values = c("E+" = "#1b9e77", "E-" = "#d95f02")) +
+  theme_bw(base_size = 12) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        legend.position = "top") +
+  labs(x = "Compound",
+       y = "Relative abundance (ng g⁻¹ h⁻¹)",
+       color = "Endophyte status")
+
+```
+
+
