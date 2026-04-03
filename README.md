@@ -1,5 +1,7 @@
 # locoweed-volatiles-2026
 
+![](img/loco-bee2.jpg)
+
 Analysis of volatile organic compound (VOC) profiles in *Oxytropis sericea* (white locoweed) comparing plants with and without the endophytic fungus *Undifilum oxytropis*. Endophyte status is confirmed by seed wash assay (SWA); plants were spatially paired (E+ / E-) to control for microsite and genetic variation.
 
 Data were collected in a greenhouse setting (Spring 2022, Spring 2023) and from natural field populations (2022, 2023). A 2019 historical field dataset is included for supplemental visualization only.
