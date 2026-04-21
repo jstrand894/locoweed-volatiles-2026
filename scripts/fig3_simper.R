@@ -62,9 +62,22 @@ simper_plot_data <- bind_rows(
 # PLOT
 # ============================================================
 
+simper_plot_data <- bind_rows(gh_data, live_data) %>%
+  mutate(dataset = factor(dataset, levels = c("Greenhouse", "Field (living tissue)")))
+
+# Build decoupled levels per panel
+gh_levels   <- gh_data   %>% arrange(average) %>% mutate(cp = paste("Greenhouse", compound, sep = "__")) %>% pull(cp)
+live_levels <- live_data %>% arrange(average) %>% mutate(cp = paste("Field (living tissue)", compound, sep = "__")) %>% pull(cp)
+
+simper_plot_data <- simper_plot_data %>%
+  mutate(
+    compound_panel = paste(dataset, compound, sep = "__"),
+    compound_panel = factor(compound_panel, levels = c(live_levels, gh_levels))
+  )
+
 SIMPER_Plot <-
   ggplot(simper_plot_data,
-         aes(x = average, y = compound, fill = direction)) +
+         aes(x = average, y = compound_panel, fill = direction)) +
   geom_col(color = "black", linewidth = 0.25, width = 0.7) +
   geom_errorbar(aes(xmin = average - sd, xmax = average + sd),
                 orientation = "y",
@@ -73,7 +86,8 @@ SIMPER_Plot <-
     values = c("Higher in Absent"  = "#D55E00",
                "Higher in Present" = "#009E73")
   ) +
-  scale_x_continuous(expand = expansion(mult = c(0, 0.05))) +
+  scale_x_continuous(expand = expansion(mult = c(0.05, 0.05))) +
+  scale_y_discrete(labels = \(x) sub(".*__", "", x)) +
   facet_wrap(~ dataset, scales = "free_y") +
   labs(
     x    = "Average contribution to dissimilarity (Bray-Curtis)",
