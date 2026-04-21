@@ -8,7 +8,6 @@
 
 source(file.path(dirname(rstudioapi::getSourceEditorContext()$path), "03_pca_2.R"))
 
-
 GH_PCA_Plot <-
   ggplot(gh_pca_data) +
   geom_point(aes(PC1, PC2, shape = year, fill = swa),

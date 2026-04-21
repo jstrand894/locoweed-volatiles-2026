@@ -12,7 +12,7 @@
 # This is acceptable — they are fast. Permanova (slow) runs once.
 # ============================================================
 
-source(file.path(dirname(rstudioapi::getSourceEditorContext()$path), "02_permanova.R"))
+source(file.path(dirname(rstudioapi::getSourceEditorContext()$path), "02_permanova_2.R"))
 source(file.path(dirname(rstudioapi::getSourceEditorContext()$path), "04_simper.R"))
 source(file.path(dirname(rstudioapi::getSourceEditorContext()$path), "05_univariate.R"))
 

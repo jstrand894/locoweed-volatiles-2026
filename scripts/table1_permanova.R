@@ -12,7 +12,7 @@
 #   betadisp_sens_year_p, betadisp_sens_swa_p
 # ============================================================
 
-source(file.path(dirname(rstudioapi::getSourceEditorContext()$path), "02_permanova.R"))
+source(file.path(dirname(rstudioapi::getSourceEditorContext()$path), "02_permanova_2.R"))
 
 
 # ============================================================

@@ -124,8 +124,13 @@ print(field_permanova)
 run_field_year_permanova <- function(year_val) {
   keep <- field_live_meta$year == year_val
   d    <- vegdist(as.matrix(field_live_clr)[keep, ], method = "euclidean")
+  formula <- if (year_val == "2023") {
+    d ~ swa + pair2
+  } else {
+    d ~ swa + collection.type + pair2
+  }
   set.seed(4721)
-  adonis2(d ~ swa + collection.type + pair2, data = field_live_meta[keep, ],
+  adonis2(formula, data = field_live_meta[keep, ],
           permutations = 999, by = "margin")
 }
 
@@ -224,3 +229,5 @@ cat("  swa  p =", betadisp_live_swa_p,  "\n")
 cat("\n--- Field betadisper — senesced leaves (year / swa) ---\n")
 cat("  year p =", betadisp_sens_year_p, "\n")
 cat("  swa  p =", betadisp_sens_swa_p,  "\n")
+
+
